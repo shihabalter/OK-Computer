@@ -9,18 +9,14 @@ import {
   getArcPublicClient,
   getLedgerAddress,
   getLedgerBytecode,
+  isLedgerConfigured,
 } from "../src/lib/ledger";
 import {
   REQUIRED_DEMO_PAYMENT_UNITS,
   formatUsdcUnits,
 } from "../src/lib/resources";
 
-const REQUIRED_ENV = [
-  "SELLER_ADDRESS",
-  "AGENT_PRIVATE_KEYS",
-  "LEDGER_WRITER_PRIVATE_KEY",
-  "ACCESS_LEDGER_ADDRESS",
-] as const;
+const REQUIRED_ENV = ["SELLER_ADDRESS", "AGENT_PRIVATE_KEYS"] as const;
 
 function fail(message: string): never {
   throw new Error(message);
@@ -55,7 +51,15 @@ async function main() {
     }
   }
 
-  if (process.env.ACCESS_LEDGER_ADDRESS) {
+  const hasLedgerAddress = Boolean(process.env.ACCESS_LEDGER_ADDRESS);
+  const hasLedgerWriter = Boolean(process.env.LEDGER_WRITER_PRIVATE_KEY);
+  if (hasLedgerAddress !== hasLedgerWriter) {
+    issues.push(
+      "Set both ACCESS_LEDGER_ADDRESS and LEDGER_WRITER_PRIVATE_KEY to enable ledger proofs, or omit both",
+    );
+  }
+
+  if (hasLedgerAddress) {
     try {
       getLedgerAddress();
     } catch (error) {
@@ -65,7 +69,7 @@ async function main() {
     }
   }
 
-  if (process.env.LEDGER_WRITER_PRIVATE_KEY) {
+  if (hasLedgerWriter) {
     try {
       privateKeyToAccount(process.env.LEDGER_WRITER_PRIVATE_KEY as Hex);
     } catch (error) {
@@ -95,26 +99,32 @@ async function main() {
       console.log("Arc RPC chain id: 5042002");
     }
 
-    const bytecode = await getLedgerBytecode();
-    if (!bytecode || bytecode === "0x") {
-      issues.push("ACCESS_LEDGER_ADDRESS has no deployed bytecode on Arc Testnet");
-    } else {
-      console.log(`AccessLedger deployed at ${getLedgerAddress()}`);
-    }
+    if (isLedgerConfigured()) {
+      const bytecode = await getLedgerBytecode();
+      if (!bytecode || bytecode === "0x") {
+        issues.push("ACCESS_LEDGER_ADDRESS has no deployed bytecode on Arc Testnet");
+      } else {
+        console.log(`AccessLedger deployed at ${getLedgerAddress()}`);
+      }
 
-    const publicClient = getArcPublicClient();
-    const writer = privateKeyToAccount(
-      requireEnv("LEDGER_WRITER_PRIVATE_KEY") as Hex,
-    );
-    const writerBalance = await publicClient.getBalance({
-      address: writer.address,
-    });
-    if (writerBalance === 0n) {
-      issues.push("LEDGER_WRITER_PRIVATE_KEY wallet has no Arc native USDC for gas");
-    } else {
-      console.log(
-        `Ledger writer gas balance: ${formatUnits(writerBalance, 18)} USDC`,
+      const publicClient = getArcPublicClient();
+      const writer = privateKeyToAccount(
+        process.env.LEDGER_WRITER_PRIVATE_KEY as Hex,
       );
+      const writerBalance = await publicClient.getBalance({
+        address: writer.address,
+      });
+      if (writerBalance === 0n) {
+        issues.push(
+          "LEDGER_WRITER_PRIVATE_KEY wallet has no Arc native USDC for gas",
+        );
+      } else {
+        console.log(
+          `Ledger writer gas balance: ${formatUnits(writerBalance, 18)} USDC`,
+        );
+      }
+    } else {
+      console.log("Arc AccessLedger proof disabled; skipping ledger checks.");
     }
 
     const buyer = new GatewayClient({

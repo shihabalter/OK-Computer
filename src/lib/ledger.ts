@@ -82,6 +82,12 @@ function requireEnv(name: string) {
   return value;
 }
 
+export function isLedgerConfigured() {
+  return Boolean(
+    process.env.ACCESS_LEDGER_ADDRESS && process.env.LEDGER_WRITER_PRIVATE_KEY,
+  );
+}
+
 export function getLedgerAddress() {
   return getAddress(requireEnv("ACCESS_LEDGER_ADDRESS")) as Address;
 }

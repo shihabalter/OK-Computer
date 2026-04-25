@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node --no-warnings --import tsx server.ts",
-    "build": "next build --webpack",
-    "start": "node --no-warnings --import tsx server.ts",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
     "lint": "eslint",
     "demo:preflight": "node --no-warnings --import tsx scripts/preflight.ts",
     "demo:60": "node --no-warnings --import tsx scripts/agent-crawler.ts",
@@ -16,23 +16,21 @@
     "@circle-fin/x402-batching": "^3.0.2",
     "@x402/core": "^2.10.0",
     "@x402/evm": "^2.10.0",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
     "next": "16.2.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "tsx": "^4.21.0",
     "viem": "^2.48.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/express": "^5.0.6",
     "@types/node": "^25.6.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

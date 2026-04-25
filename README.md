@@ -1,58 +1,54 @@
 # OK Computer
 
-OK Computer is a Next.js demo for paid machine access. It protects articles and API routes with HTTP 402 using Circle x402 batching, lets AI agents pay USDC nanopayments on Arc Testnet through Circle Gateway, and records successful unlocks to an Arc `AccessLedger` contract.
+OK Computer is a standard Next.js demo for paid machine access. It protects
+premium articles and API routes with HTTP 402 using Circle x402 batching, lets
+AI agents pay USDC nanopayments on Arc Testnet through Circle Gateway, and can
+optionally record successful unlocks to an Arc `AccessLedger` contract.
 
-The app includes:
+## What changed for deployment
 
-- A live dashboard
-- A browser demo at `/demo`
-- Protected premium article and API routes
-- Sub-cent USDC nanopayments for automated access
-- CLI scripts for a 60-payment agent crawler demo
+- Standard Next.js commands: `next dev`, `next build`, `next start`
+- No custom Express server
+- No local SQLite database or mounted disk required
+- Dashboard events are in memory and reset when the app instance restarts
+- Arc ledger proof is optional
 
 ## Requirements
 
 - Node.js 22+ and npm
-- Arc Testnet USDC for the demo wallets
-- A deployed `contracts/AccessLedger.sol` contract on Arc Testnet
-- Circle Gateway funded buyer keys for the CLI demo
+- `SELLER_ADDRESS` for paid-resource challenges
+- Arc Testnet USDC only when you run live payment demos
+
+Optional:
+
+- `AGENT_PRIVATE_KEYS` for the CLI crawler demo
+- `ACCESS_LEDGER_ADDRESS` and `LEDGER_WRITER_PRIVATE_KEY` for on-chain proof
 
 ## Setup
 
-Install dependencies:
-
 ```bash
 npm install
-```
-
-Create your env file:
-
-```bash
 cp .env.example .env
 ```
 
-Fill in:
+Minimum `.env`:
+
+```bash
+SELLER_ADDRESS=0xYourSellerWallet
+```
+
+Full demo `.env`:
 
 ```bash
 SELLER_ADDRESS=0xYourSellerWallet
 AGENT_PRIVATE_KEYS=0xYourFundedGatewayBuyerPrivateKey
-LEDGER_WRITER_PRIVATE_KEY=0xYourFundedArcLedgerWriterPrivateKey
 ACCESS_LEDGER_ADDRESS=0xYourDeployedAccessLedger
+LEDGER_WRITER_PRIVATE_KEY=0xYourFundedArcLedgerWriterPrivateKey
 ARC_RPC_URL=https://rpc.testnet.arc.network
 NEXT_PUBLIC_ARCSCAN_TX_BASE=https://testnet.arcscan.app/tx/
 ```
 
-Optional env vars:
-
-```bash
-PORT=3000
-DEMO_BASE_URL=http://localhost:3000
-OK_COMPUTER_DB_PATH=.data/ok-computer.sqlite
-```
-
-## Run Locally
-
-Start the custom Next.js + Express server:
+## Run locally
 
 ```bash
 npm run dev
@@ -64,53 +60,51 @@ Open:
 - Browser demo: http://localhost:3000/demo
 - Health check: http://localhost:3000/health
 
-## Run The Demo
+## Deploy
 
-First check the chain, env, ledger contract, writer wallet, and Gateway balance:
+This is now a normal Next.js app. Use any host that supports Next.js with the
+Node.js runtime, such as Vercel, Railway, Render, Fly.io, or a VPS.
+
+Typical settings:
+
+```txt
+Build command: npm ci && npm run build
+Start command: npm run start
+Node version: 22+
+Health check: /health
+```
+
+Set the same environment variables in your host dashboard. For the smallest
+deploy, only `SELLER_ADDRESS` is required.
+
+The dashboard event feed is demo-only in-memory state. It is simplest on a
+single running app instance; add a hosted database or KV later if you need
+durable analytics across restarts or scaled serverless instances.
+
+## Run the live crawler demo
+
+First check the chain, env, and Gateway balance:
 
 ```bash
 npm run demo:preflight
 ```
 
-Reset the local dashboard events:
+Reset the dashboard:
 
 ```bash
 npm run demo:reset
 ```
 
-Run the scripted crawler demo:
+Run the 60-payment crawler:
 
 ```bash
 npm run demo:60
 ```
 
-This sends 60 paid nanopayment unlocks and 12 unpaid blocked requests. Watch the dashboard update while it runs.
-
-You can also use `/demo` in the browser. It creates a session wallet, asks you to fund it from the Circle faucet, deposits USDC into Gateway, then performs one paid nanopayment article unlock.
-
-## Build
-
-```bash
-npm run build
-npm run start
-```
-
-## Deploy
-
-Deploy this as a Node web service because it uses a custom Express server in `server.ts`.
-
-Use a host such as Railway, Render, Fly.io, or a VPS with these settings:
-
-- Build command: `npm ci && npm run build`
-- Start command: `npm run start`
-- Node version: 22+
-- Environment variables: copy the same values from `.env`
-
-If you want dashboard history to survive restarts, mount persistent storage and set `OK_COMPUTER_DB_PATH` to a path on that disk.
-
-After deployment, set `DEMO_BASE_URL` to your deployed URL before running the CLI demo against production:
+Against a deployed app:
 
 ```bash
 DEMO_BASE_URL=https://your-app.example.com npm run demo:preflight
+DEMO_BASE_URL=https://your-app.example.com npm run demo:reset
 DEMO_BASE_URL=https://your-app.example.com npm run demo:60
 ```

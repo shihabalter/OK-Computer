@@ -1,8 +1,3 @@
-import { mkdirSync } from "node:fs";
-import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
-import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
-
 import {
   PROTECTED_RESOURCES,
   formatUsdcUnits,
@@ -26,21 +21,6 @@ export type AccessEvent = {
   message: string | null;
 };
 
-type EventRow = {
-  id: number;
-  created_at: string;
-  status: EventStatus;
-  agent: string;
-  resource_path: string;
-  price_usdc: string;
-  amount_units: number;
-  payer: string | null;
-  network: string | null;
-  payment_tx: string | null;
-  ledger_tx: string | null;
-  message: string | null;
-};
-
 type InsertPaymentInput = {
   agent: string;
   resourcePath: string;
@@ -58,167 +38,149 @@ type BlockedInput = {
   message: string;
 };
 
-const require = createRequire(import.meta.url);
+type EventStore = {
+  events: AccessEvent[];
+  nextId: number;
+};
 
-let database: DatabaseSyncType | null = null;
+const MAX_EVENTS = 500;
 
-function getDatabasePath() {
-  return process.env.OK_COMPUTER_DB_PATH ?? join(process.cwd(), ".data", "ok-computer.sqlite");
-}
+const globalForEvents = globalThis as typeof globalThis & {
+  __okComputerEventStore?: EventStore;
+};
 
-function getDb() {
-  if (!database) {
-    const { DatabaseSync } = require("node:sqlite") as typeof import("node:sqlite");
-    const dbPath = getDatabasePath();
-    mkdirSync(dirname(dbPath), { recursive: true });
-    database = new DatabaseSync(dbPath);
-    database.exec(`
-      create table if not exists access_events (
-        id integer primary key autoincrement,
-        created_at text not null,
-        status text not null,
-        agent text not null,
-        resource_path text not null,
-        price_usdc text not null,
-        amount_units integer not null,
-        payer text,
-        network text,
-        payment_tx text,
-        ledger_tx text,
-        message text
-      );
+function getStore() {
+  globalForEvents.__okComputerEventStore ??= {
+    events: [],
+    nextId: 1,
+  };
 
-      create index if not exists idx_access_events_status
-        on access_events(status);
-
-      create index if not exists idx_access_events_created_at
-        on access_events(created_at);
-    `);
-  }
-
-  return database;
+  return globalForEvents.__okComputerEventStore;
 }
 
 function nowIso() {
   return new Date().toISOString();
 }
 
-function toAccessEvent(row: EventRow): AccessEvent {
-  return {
-    id: row.id,
-    createdAt: row.created_at,
-    status: row.status,
-    agent: row.agent,
-    resourcePath: row.resource_path,
-    priceUsdc: row.price_usdc,
-    amountUnits: row.amount_units,
-    payer: row.payer,
-    network: row.network,
-    paymentTx: row.payment_tx,
-    ledgerTx: row.ledger_tx,
-    message: row.message,
-  };
+function addEvent(event: AccessEvent) {
+  const store = getStore();
+  store.events.push(event);
+
+  if (store.events.length > MAX_EVENTS) {
+    store.events.splice(0, store.events.length - MAX_EVENTS);
+  }
+}
+
+function sortedEvents(events: AccessEvent[]) {
+  return [...events].sort((left, right) => right.id - left.id);
 }
 
 export function createPendingPayment(input: InsertPaymentInput) {
-  const result = getDb()
-    .prepare(
-      `insert into access_events (
-        created_at, status, agent, resource_path, price_usdc, amount_units,
-        payer, network, payment_tx, ledger_tx, message
-      ) values (?, 'PENDING', ?, ?, ?, ?, ?, ?, ?, null, 'Payment settled; writing Arc ledger proof')`,
-    )
-    .run(
-      nowIso(),
-      input.agent,
-      input.resourcePath,
-      input.priceUsdc,
-      input.amountUnits,
-      input.payer,
-      input.network,
-      input.paymentTx,
-    );
+  const store = getStore();
+  const id = store.nextId;
+  store.nextId += 1;
 
-  return Number(result.lastInsertRowid);
+  addEvent({
+    id,
+    createdAt: nowIso(),
+    status: "PENDING",
+    agent: input.agent,
+    resourcePath: input.resourcePath,
+    priceUsdc: input.priceUsdc,
+    amountUnits: input.amountUnits,
+    payer: input.payer,
+    network: input.network,
+    paymentTx: input.paymentTx,
+    ledgerTx: null,
+    message: "Payment settled; writing Arc ledger proof",
+  });
+
+  return id;
 }
 
-export function markPaymentLedgered(id: number, ledgerTx: string) {
-  getDb()
-    .prepare(
-      `update access_events
-       set status = 'PAID', ledger_tx = ?, message = 'Unlocked after x402 payment and Arc proof'
-       where id = ?`,
-    )
-    .run(ledgerTx, id);
+export function markPaymentLedgered(id: number, ledgerTx: string | null) {
+  const event = getStore().events.find((row) => row.id === id);
+  if (!event) return;
+
+  event.status = "PAID";
+  event.ledgerTx = ledgerTx;
+  event.message = ledgerTx
+    ? "Unlocked after x402 payment and Arc proof"
+    : "Unlocked after x402 payment; Arc ledger proof disabled";
 }
 
 export function markPaymentLedgerFailed(id: number, message: string) {
-  getDb()
-    .prepare(
-      `update access_events
-       set status = 'LEDGER_FAILED', message = ?
-       where id = ?`,
-    )
-    .run(message, id);
+  const event = getStore().events.find((row) => row.id === id);
+  if (!event) return;
+
+  event.status = "LEDGER_FAILED";
+  event.message = message;
 }
 
 export function recordBlockedAccess(input: BlockedInput) {
-  getDb()
-    .prepare(
-      `insert into access_events (
-        created_at, status, agent, resource_path, price_usdc, amount_units,
-        payer, network, payment_tx, ledger_tx, message
-      ) values (?, 'BLOCKED', ?, ?, ?, 0, null, null, null, null, ?)`,
-    )
-    .run(
-      nowIso(),
-      input.agent,
-      input.resourcePath,
-      input.priceUsdc,
-      input.message,
-    );
+  const store = getStore();
+  const id = store.nextId;
+  store.nextId += 1;
+
+  addEvent({
+    id,
+    createdAt: nowIso(),
+    status: "BLOCKED",
+    agent: input.agent,
+    resourcePath: input.resourcePath,
+    priceUsdc: input.priceUsdc,
+    amountUnits: 0,
+    payer: null,
+    network: null,
+    paymentTx: null,
+    ledgerTx: null,
+    message: input.message,
+  });
 }
 
 export function resetDemoEvents() {
-  getDb().exec("delete from access_events;");
+  const store = getStore();
+  store.events = [];
+  store.nextId = 1;
 }
 
 export function getDashboardSnapshot() {
-  const db = getDb();
-  const rows = db
-    .prepare("select * from access_events order by id desc limit 200")
-    .all() as EventRow[];
-  const allPaidRows = db
-    .prepare("select * from access_events where status = 'PAID' order by id desc")
-    .all() as EventRow[];
-  const allBlockedRows = db
-    .prepare("select * from access_events where status = 'BLOCKED' order by id desc")
-    .all() as EventRow[];
+  const events = getStore().events;
+  const rows = sortedEvents(events).slice(0, 200);
+  const allPaidRows = sortedEvents(
+    events.filter((event) => event.status === "PAID"),
+  );
+  const allBlockedRows = sortedEvents(
+    events.filter((event) => event.status === "BLOCKED"),
+  );
 
-  const paidUnits = allPaidRows.reduce((total, row) => total + row.amount_units, 0);
+  const paidUnits = allPaidRows.reduce(
+    (total, row) => total + row.amountUnits,
+    0,
+  );
   const paidCount = allPaidRows.length;
   const averageUnits = paidCount > 0 ? Math.round(paidUnits / paidCount) : 0;
   const lowestUnits =
-    paidCount > 0 ? Math.min(...allPaidRows.map((row) => row.amount_units)) : 0;
+    paidCount > 0 ? Math.min(...allPaidRows.map((row) => row.amountUnits)) : 0;
   const highestUnits =
-    paidCount > 0 ? Math.max(...allPaidRows.map((row) => row.amount_units)) : 0;
+    paidCount > 0 ? Math.max(...allPaidRows.map((row) => row.amountUnits)) : 0;
 
   return {
     generatedAt: nowIso(),
     resources: getResourceRows(),
-    events: rows.map(toAccessEvent),
+    events: rows,
     proofs: allPaidRows
-      .filter((row) => row.ledger_tx)
+      .filter((row) => row.ledgerTx)
       .map((row) => ({
         id: row.id,
         agent: row.agent,
-        resourcePath: row.resource_path,
-        amountUnits: row.amount_units,
-        priceUsdc: row.price_usdc,
-        paymentTx: row.payment_tx,
-        ledgerTx: row.ledger_tx,
-        ledgerUrl: `${process.env.NEXT_PUBLIC_ARCSCAN_TX_BASE ?? "https://testnet.arcscan.app/tx/"}${row.ledger_tx}`,
-        createdAt: row.created_at,
+        resourcePath: row.resourcePath,
+        amountUnits: row.amountUnits,
+        priceUsdc: row.priceUsdc,
+        paymentTx: row.paymentTx,
+        ledgerTx: row.ledgerTx,
+        ledgerUrl: `${process.env.NEXT_PUBLIC_ARCSCAN_TX_BASE ?? "https://testnet.arcscan.app/tx/"}${row.ledgerTx}`,
+        createdAt: row.createdAt,
       })),
     stats: {
       paidRequests: paidCount,
@@ -231,9 +193,11 @@ export function getDashboardSnapshot() {
       lowestPaymentUsdc: formatUsdcUnits(lowestUnits, 4),
       highestPaymentUsdc: formatUsdcUnits(highestUnits, 4),
       protectedResourcesUnlocked: new Set(
-        allPaidRows.map((row) => row.resource_path),
+        allPaidRows.map((row) => row.resourcePath),
       ).size,
-      allPaymentsBelowOneCent: allPaidRows.every((row) => row.amount_units < 10_000),
+      allPaymentsBelowOneCent: allPaidRows.every(
+        (row) => row.amountUnits < 10_000,
+      ),
       totalProtectedResources: PROTECTED_RESOURCES.length,
     },
   };
