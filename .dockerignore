@@ -1,0 +1,74 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+/playwright-report
+/test-results
+
+# next.js
+/.next/
+/out/
+.next
+
+# production
+/build
+/dist
+
+# local app data
+/.data
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+
+# cache
+/.cache
+/.turbo
+.eslintcache
+.stylelintcache
+
+# logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# misc
+.DS_Store
+Thumbs.db
+desktop.ini
+*.pem
+*.key
+*.crt
+
+# env files (can opt-in for committing if needed)
+.env*
+!.env.example
+
+# vercel
+.vercel
+
+# editors
+.idea
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
