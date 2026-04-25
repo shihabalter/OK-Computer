@@ -4,7 +4,7 @@ OK Computer is a Next.js demo for paid machine access. It protects articles and 
 
 The app includes:
 
-- A live dashboard at `/`
+- A live dashboard
 - A browser demo at `/demo`
 - Protected premium article and API routes
 - Sub-cent USDC nanopayments for automated access
