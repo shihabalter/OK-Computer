@@ -103,6 +103,7 @@ type PayResponse = {
 };
 
 const STORAGE_KEY = "ok-computer.demo.wallet.v1";
+const BALANCE_POLL_MS = 5_000;
 const REQUIRED_GATEWAY_UNITS = 10_000_000n;
 
 const mockBullets = [
@@ -333,16 +334,28 @@ export function DemoChatClient({ resource, faucetUrl }: DemoChatClientProps) {
   useEffect(() => {
     if (!wallet) return;
 
+    function pollBalances() {
+      if (!document.hidden) {
+        void refreshBalances();
+      }
+    }
+
+    function handleVisibilityChange() {
+      if (!document.hidden) {
+        void refreshBalances();
+      }
+    }
+
     const initialRefresh = window.setTimeout(() => {
-      void refreshBalances();
+      pollBalances();
     }, 0);
-    const timer = window.setInterval(() => {
-      void refreshBalances();
-    }, 6500);
+    window.addEventListener("visibilitychange", handleVisibilityChange);
+    const timer = window.setInterval(pollBalances, BALANCE_POLL_MS);
 
     return () => {
       window.clearTimeout(initialRefresh);
       window.clearInterval(timer);
+      window.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [refreshBalances, wallet]);
 

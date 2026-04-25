@@ -84,6 +84,7 @@ const emptySnapshot: DashboardSnapshot = {
 };
 
 const GAS_PER_REQUEST_USD = 0.2;
+const DASHBOARD_POLL_MS = 5_000;
 
 function shortHash(value: string | null, head = 10, tail = 8) {
   if (!value) return "awaiting proof";
@@ -185,6 +186,10 @@ export function DashboardClient() {
     let cancelled = false;
 
     async function loadSnapshot() {
+      if (document.hidden) {
+        return;
+      }
+
       try {
         const response = await fetch("/api/dashboard", { cache: "no-store" });
         if (!response.ok) {
@@ -202,12 +207,20 @@ export function DashboardClient() {
       }
     }
 
+    function handleVisibilityChange() {
+      if (!document.hidden) {
+        void loadSnapshot();
+      }
+    }
+
     void loadSnapshot();
-    const timer = window.setInterval(loadSnapshot, 1200);
+    window.addEventListener("visibilitychange", handleVisibilityChange);
+    const timer = window.setInterval(loadSnapshot, DASHBOARD_POLL_MS);
 
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      window.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 
