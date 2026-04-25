@@ -1,36 +1,116 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# OK Computer
 
-## Getting Started
+OK Computer is a Next.js demo for paid machine access. It protects articles and API routes with HTTP 402 using Circle x402 batching, lets AI agents pay USDC nanopayments on Arc Testnet through Circle Gateway, and records successful unlocks to an Arc `AccessLedger` contract.
 
-First, run the development server:
+The app includes:
+
+- A live dashboard at `/`
+- A browser demo at `/demo`
+- Protected premium article and API routes
+- Sub-cent USDC nanopayments for automated access
+- CLI scripts for a 60-payment agent crawler demo
+
+## Requirements
+
+- Node.js 22+ and npm
+- Arc Testnet USDC for the demo wallets
+- A deployed `contracts/AccessLedger.sol` contract on Arc Testnet
+- Circle Gateway funded buyer keys for the CLI demo
+
+## Setup
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Create your env file:
+
+```bash
+cp .env.example .env
+```
+
+Fill in:
+
+```bash
+SELLER_ADDRESS=0xYourSellerWallet
+AGENT_PRIVATE_KEYS=0xYourFundedGatewayBuyerPrivateKey
+LEDGER_WRITER_PRIVATE_KEY=0xYourFundedArcLedgerWriterPrivateKey
+ACCESS_LEDGER_ADDRESS=0xYourDeployedAccessLedger
+ARC_RPC_URL=https://rpc.testnet.arc.network
+NEXT_PUBLIC_ARCSCAN_TX_BASE=https://testnet.arcscan.app/tx/
+```
+
+Optional env vars:
+
+```bash
+PORT=3000
+DEMO_BASE_URL=http://localhost:3000
+OK_COMPUTER_DB_PATH=.data/ok-computer.sqlite
+```
+
+## Run Locally
+
+Start the custom Next.js + Express server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Dashboard: http://localhost:3000
+- Browser demo: http://localhost:3000/demo
+- Health check: http://localhost:3000/health
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Run The Demo
 
-## Learn More
+First check the chain, env, ledger contract, writer wallet, and Gateway balance:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run demo:preflight
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Reset the local dashboard events:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm run demo:reset
+```
 
-## Deploy on Vercel
+Run the scripted crawler demo:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm run demo:60
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+This sends 60 paid nanopayment unlocks and 12 unpaid blocked requests. Watch the dashboard update while it runs.
+
+You can also use `/demo` in the browser. It creates a session wallet, asks you to fund it from the Circle faucet, deposits USDC into Gateway, then performs one paid nanopayment article unlock.
+
+## Build
+
+```bash
+npm run build
+npm run start
+```
+
+## Deploy
+
+Deploy this as a Node web service because it uses a custom Express server in `server.ts`.
+
+Use a host such as Railway, Render, Fly.io, or a VPS with these settings:
+
+- Build command: `npm ci && npm run build`
+- Start command: `npm run start`
+- Node version: 22+
+- Environment variables: copy the same values from `.env`
+
+If you want dashboard history to survive restarts, mount persistent storage and set `OK_COMPUTER_DB_PATH` to a path on that disk.
+
+After deployment, set `DEMO_BASE_URL` to your deployed URL before running the CLI demo against production:
+
+```bash
+DEMO_BASE_URL=https://your-app.example.com npm run demo:preflight
+DEMO_BASE_URL=https://your-app.example.com npm run demo:60
+```
